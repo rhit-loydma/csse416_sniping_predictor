@@ -217,13 +217,14 @@ async def tally_message_score(message, was_aware, attachments):
 
                     # load image
                     img = cv.imread("temp.png")
+                    img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
 
                     # resize image
                     img = cv.resize(img, dsize=(IMAGE_WIDTH, IMAGE_HEIGHT), interpolation=cv.INTER_CUBIC)
 
                     # change to list
-                    # with the way flatten works, this will be all the blue data, followed by green, then red
-                    # each of the channels will be in row-major order
+                    # with the way flatten works, this will be in row major order
+                    # with each pixel data in RGB order
                     entry = [label] + list(img.flatten())
                     score_entrys.append(entry)
 
@@ -243,7 +244,7 @@ def log_scoreboard_to_file(scoreboard, filename=None):
         # write the csv header and then dump each score entry to the file
         # filewriter.writerow(['filename', 'sniper', 'snipee', 'was-aware','year','month','day','hour','minute','second','week_day'])
         header = ["label"]
-        for c in ["B", "G", "R"]:
+        for c in ["R", "G", "B"]:
             for y in range(IMAGE_HEIGHT):
                 for x in range(IMAGE_WIDTH):
                     header.append("pixel" + str(y) + "_" + str(x) + "_" + str(c))
