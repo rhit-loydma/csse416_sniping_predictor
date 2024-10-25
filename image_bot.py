@@ -8,7 +8,7 @@ import shutil
 import cv2 as cv
 import numpy as np
 
-LIMIT = 100
+LIMIT = 500
 IMAGE_HEIGHT = 256
 IMAGE_WIDTH = 192
 
@@ -221,7 +221,8 @@ async def tally_message_score(message, was_aware, attachments):
 
                     # load image
                     img = cv.imread("temp.png")
-                    img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+                    # img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+                    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
                     # resize image
                     img = cv.resize(img, dsize=(IMAGE_WIDTH, IMAGE_HEIGHT), interpolation=cv.INTER_CUBIC)
