@@ -170,10 +170,14 @@ async def save_newts():
     # grab the time and format it
     # fname = datetime.now().strftime('%a %d %b %Y, %I-%M%p-%S')
     # fname = fname + '.csv'
-    fname = "snipe_data.csv"
+    # fname = "snipe_data.csv"
 
     # write scoreboard to a file and then upload the file
-    log_scoreboard_to_file(scoreboard, str(fname))
+    # log_scoreboard_to_file(scoreboard, str(fname))
+
+    fname = "snipe_data.npz"
+    arr = np.array(scoreboard)
+    np.savez_compressed(fname, arr)
 
     print(name_counts)
     return count, fname
