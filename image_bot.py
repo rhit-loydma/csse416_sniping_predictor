@@ -8,7 +8,7 @@ import shutil
 import cv2 as cv
 import numpy as np
 
-LIMIT = 500
+# LIMIT = 2000
 IMAGE_HEIGHT = 256
 IMAGE_WIDTH = 192
 
@@ -152,20 +152,24 @@ async def save_newts():
             name_counts[name] = 0
 
     # loop through all messages in sniped
-    async for message in sniped_channel.history(limit=LIMIT):
+    async for message in sniped_channel.history(limit=100):
         # if the message has an image then score it
         if len(message.attachments) > 0:
             # add the scores for that message to the scorebaord
             scoreboard += await tally_message_score(message=message, was_aware=False, attachments=message.attachments)
             count = count + 1
+            if (count % 100 == 0):
+                print("Found",count,"images")
 
     # loop through all messages in sniped-but-not
-    async for message in sniped_but_not_channel.history(limit=LIMIT-count):
+    async for message in sniped_but_not_channel.history(limit=100):
         # if the message has an image then score it
         if len(message.attachments) > 0:
             # add the scores for that message to the scorebaord
             scoreboard += await tally_message_score(message=message, was_aware=True, attachments=message.attachments)
             count = count + 1
+            if (count % 100 == 0):
+                print("Found",count,"images")
 
     # grab the time and format it
     # fname = datetime.now().strftime('%a %d %b %Y, %I-%M%p-%S')
@@ -176,7 +180,7 @@ async def save_newts():
     # log_scoreboard_to_file(scoreboard, str(fname))
 
     fname = "snipe_data.npz"
-    arr = np.array(scoreboard)
+    arr = np.array(scoreboard, dtype=np.uint8)
     np.savez_compressed(fname, arr)
 
     print(name_counts)
@@ -193,21 +197,9 @@ async def tally_message_score(message, was_aware, attachments):
     for mention in message.mentions:
         snipee = name_dict.get(str(mention.name))
         if (not ((sniper in exclude_list) or (snipee in exclude_list))):
-            # fname = 'Images/' + snipee + "/" + snipee + "_" + str(name_counts[snipee]) + ".png"
-            # # create dict for csv row
-            # dt_obj = message.created_at
-            # score_entry = {"filename" : fname,
-            #             "sniper" : sniper,
-            #             "snipee" : snipee,
-            #             "was-aware": was_aware,
-            #             "year": dt_obj.year,
-            #             "month": dt_obj.month,
-            #             "day": dt_obj.day,
-            #             "hour": dt_obj.hour,
-            #             "minute": dt_obj.minute,
-            #             "second": dt_obj.second,
-            #             "week_day": dt_obj.weekday()}
-            # score_entrys.append(score_entry)
+            dt_obj = message.created_at
+            sniper_index = names.index(sniper)
+            metadata = [sniper_index, was_aware, dt_obj.month, dt_obj.day, dt_obj.hour, dt_obj.minute, dt_obj.weekday()]
 
             label = names.index(snipee)
 
@@ -227,10 +219,9 @@ async def tally_message_score(message, was_aware, attachments):
                     # resize image
                     img = cv.resize(img, dsize=(IMAGE_WIDTH, IMAGE_HEIGHT), interpolation=cv.INTER_CUBIC)
 
-                    # change to list
                     # with the way flatten works, this will be in row major order
-                    # with each pixel data in RGB order
-                    entry = [label] + list(img.flatten())
+                    # with each pixel data in RGB order (if in color)
+                    entry = [label] + metadata + list(img.flatten())
                     score_entrys.append(entry)
 
             # update counts
@@ -247,8 +238,7 @@ def log_scoreboard_to_file(scoreboard, filename=None):
                             quotechar='|', quoting=csv.QUOTE_MINIMAL)
         
         # write the csv header and then dump each score entry to the file
-        # filewriter.writerow(['filename', 'sniper', 'snipee', 'was-aware','year','month','day','hour','minute','second','week_day'])
-        header = ["label"]
+        header = ["label", "sniper", "was-aware", "month", "day", "hour", "minute", "week_day"]
         for c in ["R", "G", "B"]:
             for y in range(IMAGE_HEIGHT):
                 for x in range(IMAGE_WIDTH):
@@ -259,22 +249,5 @@ def log_scoreboard_to_file(scoreboard, filename=None):
             filewriter.writerow(score_entry)
 
     print("done logging to file")
-        
-    
-
-def score_entry_to_csv_row(score_entry):
-    row = []
-    row.append(score_entry['filename'])
-    row.append(score_entry['sniper'])
-    row.append(score_entry['snipee'])
-    row.append(score_entry['was-aware'])
-    row.append(score_entry['year'])
-    row.append(score_entry['month'])
-    row.append(score_entry['day'])
-    row.append(score_entry['hour'])
-    row.append(score_entry['minute'])
-    row.append(score_entry['second'])
-    row.append(score_entry['week_day'])
-    return row
 
 client.run(token)
