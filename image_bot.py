@@ -2,15 +2,17 @@
 
 import discord
 import csv
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 import shutil
 import cv2 as cv
 import numpy as np
 
 # LIMIT = 2000
-IMAGE_HEIGHT = 256
-IMAGE_WIDTH = 192
+IMAGE_HEIGHT = 256*2
+IMAGE_WIDTH = 192*2
+RGB = True
+SAVE_INTERVAL = 100
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -61,6 +63,8 @@ name_dict = {
 name_counts = {}
 names = []
 
+time_sections = [datetime(2023,11,1,0,0,0,0,timezone.utc) + timedelta(days=x) for x in range(0,370,5)]
+
 exclude_list = ['Justin', 'Andrew', 'Colleen', 'Kimmie', 'Reila', 'Taytum', 'Thomas']
 
 @client.event
@@ -92,16 +96,6 @@ async def on_ready():
     print("sniped but not id: " + str(sniped_but_not_channel.id))
     print("bot channel id: " + str(bot_channel.id))
 
-    # # create folders to save data
-    # shutil.rmtree('Images/')
-    # names = [""]
-    # names += name_dict.values()
-    # for name in names:
-    #     path = "Images/" + name
-    #     if not (name in exclude_list or os.path.exists(path)):
-    #         os.mkdir(path)
-    # print("finished creating folders to save images")
-
     # set up labels
     names = set(name_dict.values())
     names = set.difference(names, exclude_list)
@@ -118,73 +112,49 @@ async def on_ready():
 
     await save_newts()
 
-@client.event
-async def on_message(message):
-    global scoreboard
 
-    # if the message is from the bot, do nothing
-    if message.author == client.user:
-        return
-    
-    # simple test case
-    if message.content.startswith(bot_prefix + 'help'):
-        help = "use /'$count_newts/' to tally the newt snipe scores."
-        await message.channel.send(help)
-
-    # command to count scores
-    if message.content.startswith(bot_prefix + 'save_newts'):
-        await bot_channel.send("Creating dataset from newts in sniped channels...")
-        count, fname = await save_newts()
-        await bot_channel.send(f"counted {count} newts. Logging to file")
-        await bot_channel.send(f"Logging finished. Uploading File")
-        await bot_channel.send(file=discord.File(fname))
-        
+def save_scoreboard(scoreboard, segment):
+    fname = "snipe_data_" 
+    if RGB:
+        fname += "rgb_"
+    else:
+        fname += "gray_"
+    fname += str(segment) + ".npz"
+    arr = np.array(scoreboard, dtype=np.uint8)
+    print(len(scoreboard))
+    print(fname)
+    np.savez(fname, arr)
 
 async def save_newts():
     # clear the scorebaord
     global scoreboard
     scoreboard = []
-    count = 0
 
     # initalize counts
+    global name_counts
     for name in name_dict.values():
         if not name in exclude_list:
             name_counts[name] = 0
 
-    # loop through all messages in sniped
-    async for message in sniped_channel.history(limit=100):
-        # if the message has an image then score it
-        if len(message.attachments) > 0:
-            # add the scores for that message to the scorebaord
-            scoreboard += await tally_message_score(message=message, was_aware=False, attachments=message.attachments)
-            count = count + 1
-            if (count % 100 == 0):
-                print("Found",count,"images")
 
-    # loop through all messages in sniped-but-not
-    async for message in sniped_but_not_channel.history(limit=100):
-        # if the message has an image then score it
-        if len(message.attachments) > 0:
-            # add the scores for that message to the scorebaord
-            scoreboard += await tally_message_score(message=message, was_aware=True, attachments=message.attachments)
-            count = count + 1
-            if (count % 100 == 0):
-                print("Found",count,"images")
-
-    # grab the time and format it
-    # fname = datetime.now().strftime('%a %d %b %Y, %I-%M%p-%S')
-    # fname = fname + '.csv'
-    # fname = "snipe_data.csv"
-
-    # write scoreboard to a file and then upload the file
-    # log_scoreboard_to_file(scoreboard, str(fname))
+    channels = [sniped_channel, sniped_but_not_channel]
+    for i in range(1, len(time_sections)):
+        scoreboard = []
+        for c in channels:
+            async for message in c.history(limit=None, before=time_sections[i], after=time_sections[i-1]):
+                # if the message has an image then score it
+                if len(message.attachments) > 0:
+                    # add the scores for that message to the scorebaord
+                    scoreboard += await tally_message_score(message=message, was_aware=c==sniped_but_not_channel, attachments=message.attachments)
+        save_scoreboard(scoreboard, i-1)
+        print(f"Saved newt for time period: {time_sections[i-1]} to {time_sections[i]}")
 
     fname = "snipe_data.npz"
     arr = np.array(scoreboard, dtype=np.uint8)
     np.savez_compressed(fname, arr)
 
     print(name_counts)
-    return count, fname
+    return fname
 
 # take a message, look at the author and the @mentions, and 
 # record score entrys to represent who sniped who
@@ -213,8 +183,10 @@ async def tally_message_score(message, was_aware, attachments):
 
                     # load image
                     img = cv.imread("temp.png")
-                    # img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-                    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+                    if RGB:
+                        img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+                    else:
+                        img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
                     # resize image
                     img = cv.resize(img, dsize=(IMAGE_WIDTH, IMAGE_HEIGHT), interpolation=cv.INTER_CUBIC)
@@ -229,25 +201,3 @@ async def tally_message_score(message, was_aware, attachments):
     
     # print(score_entrys)
     return score_entrys
-
-def log_scoreboard_to_file(scoreboard, filename=None):
-    print("logging to file")
-    # create a csv with the datetime as a file name
-    with open(filename, 'w', newline='') as csvfile:
-        filewriter = csv.writer(csvfile, delimiter=',',
-                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        
-        # write the csv header and then dump each score entry to the file
-        header = ["label", "sniper", "was-aware", "month", "day", "hour", "minute", "week_day"]
-        for c in ["R", "G", "B"]:
-            for y in range(IMAGE_HEIGHT):
-                for x in range(IMAGE_WIDTH):
-                    header.append("pixel" + str(y) + "_" + str(x) + "_" + str(c))
-        filewriter.writerow(header)
-
-        for score_entry in scoreboard:
-            filewriter.writerow(score_entry)
-
-    print("done logging to file")
-
-client.run(token)
